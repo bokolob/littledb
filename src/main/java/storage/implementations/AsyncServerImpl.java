@@ -10,6 +10,10 @@ import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import storage.CommandParser;
 import storage.AsyncWriteCallback;
@@ -17,43 +21,12 @@ import storage.AsyncWriteCallback;
 public class AsyncServerImpl {
     int port;
     CommandParser commandParser;
+    ExecutorService executorService;
 
     public AsyncServerImpl(int port, CommandParser commandParser) {
         this.port = port;
         this.commandParser = commandParser;
-    }
-
-    private static class ValueReader implements AsyncWriteCallback {
-
-        Selector selector;
-        Handler handler;
-        boolean valid = true;
-
-        public ValueReader(Selector selector, Handler handler) {
-            this.selector = selector;
-            this.handler = handler;
-        }
-
-        @Override
-        public void onValueBlockRead(Integer size, ByteBuffer buffer) throws ClosedChannelException {
-            int ops;
-
-            if (!valid) {
-                throw new IllegalStateException("Trying to call invalid callback!");
-            }
-
-            if (size == -1) {
-                handler.writeBuffer = null;
-                handler.state = Handler.State.READING;
-                ops = SelectionKey.OP_READ;
-                valid = false;
-            } else {
-                handler.writeBuffer = buffer;
-                ops = SelectionKey.OP_WRITE;
-            }
-
-            handler.channel().register(selector, ops, handler);
-        }
+        this.executorService = Executors.newCachedThreadPool();
     }
 
     private static class Handler {
@@ -88,7 +61,7 @@ public class AsyncServerImpl {
             return SelectionKey.OP_READ;
         }
 
-        private void processNewData(SelectionKey selectionKey) {
+        private void processNewData(SelectionKey selectionKey)  {
             state = State.READING;
             final int len = readBuffer.limit();
 
@@ -97,12 +70,16 @@ public class AsyncServerImpl {
 
                 if (b == '\n') {
                     try {
-                        ValueReader valueReader = new ValueReader(selectionKey.selector(), this);
-
                         state = State.RESPONDING;
-                        selectionKey.cancel();
+                        selectionKey.interestOps(0);
 
-                        commandParser.processCommand(stringBuffer.toString(), valueReader);
+                        commandParser.processCommand(stringBuffer.toString())
+                                .thenAccept(buf -> {
+                                    System.err.println("CommandParser callback! "+buf);
+                                    writeBuffer = buf;
+                                    selectionKey.interestOps(SelectionKey.OP_WRITE);
+                                });
+
                         stringBuffer = new StringBuffer();
 
                         break;
@@ -122,6 +99,10 @@ public class AsyncServerImpl {
 
             switch (state) {
                 case READING:
+                    if ((selectionKey.interestOps() & SelectionKey.OP_READ) == 0) {
+                        break;
+                    }
+
                     if (readBuffer.remaining() == 0) {
                         readBuffer.clear();
                         rc = channel.read(readBuffer);
@@ -136,6 +117,10 @@ public class AsyncServerImpl {
                     processNewData(selectionKey);
                     break;
                 case RESPONDING:
+                    if ((selectionKey.interestOps() & SelectionKey.OP_WRITE) == 0) {
+                        break;
+                    }
+
                     rc = channel.write(writeBuffer);
 
                     if (rc == -1) {
@@ -162,10 +147,11 @@ public class AsyncServerImpl {
     public void run() throws IOException {
         ServerSocketChannel serverSocket = ServerSocketChannel.open();
         serverSocket.configureBlocking(false);
+
         InetSocketAddress inetSocketAddress = new InetSocketAddress((InetAddress) null, port);
         serverSocket.bind(inetSocketAddress);
 
-        Thread[] threads = new Thread[4];
+        Thread[] threads = new Thread[1];
 
         for (int i = 0; i < threads.length; i++) {
             Selector selector = Selector.open();
@@ -197,7 +183,7 @@ public class AsyncServerImpl {
 
         while (true) {
 
-            if (selector.select(100) == 0) {
+            if (selector.select(0) == 0) {
                 //on time-out
             }
 

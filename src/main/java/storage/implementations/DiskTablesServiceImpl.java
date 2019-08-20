@@ -7,12 +7,14 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.AbstractMap;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -239,8 +241,7 @@ public class DiskTablesServiceImpl implements DiskTablesService {
 
     }
 
-    @Override
-    public Optional<Value> lookupOnDisk(Key key) throws IOException {
+    private Map.Entry<PrimaryIndex.IndexEntry, PersistentGeneration> findFileWithValue(Key key) {
         File[] files = Objects.requireNonNull(folder.listFiles());
         Arrays.sort(files);
 
@@ -250,18 +251,41 @@ public class DiskTablesServiceImpl implements DiskTablesService {
             if (file.getName().endsWith(INDEX_FILE_EXT)) {
                 String indexPath = file.getAbsolutePath();
 
-                PersistentGeneration persistentGeneration = readFromDisk(indexPath);
-                Optional<Value> value = persistentGeneration.get(key);
+                PersistentGeneration persistentGeneration;
 
-                if (value.isPresent()) {
-                    fileCache.prolongate(indexPath, 10000);
-                    return value;
+                try {
+                    persistentGeneration = readFromDisk(indexPath);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                    return null;
+                }
+
+                PrimaryIndex.IndexEntry found = persistentGeneration.search(key);
+
+                if (found != null) {
+                    return new AbstractMap.SimpleEntry<>(found, persistentGeneration);
+                    //return persistentGeneration.getAsync(new AbstractMap.SimpleEntry<>(found, persistentGeneration));
                 }
 
             }
         }
 
-        return Optional.empty();
+        return null;
+    }
+
+    @Override
+    public CompletableFuture<Optional<Value>> lookupOnDisk(Key key) {
+
+        return CompletableFuture.supplyAsync(() -> findFileWithValue(key))
+                .thenCompose(pair -> {
+                    if (pair == null) {
+                        return CompletableFuture.completedFuture(null);
+                    }
+                    else {
+                        return pair.getValue().getAsync(pair.getKey());
+                    }
+                }).thenApply(Optional::ofNullable);
+
     }
 
     private static class VolatileGenerationHolder {

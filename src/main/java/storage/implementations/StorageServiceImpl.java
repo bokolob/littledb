@@ -1,24 +1,27 @@
 package storage.implementations;
 
 import java.io.IOException;
-import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentSkipListMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import row.Key;
 import row.Value;
 import storage.DiskTablesService;
-import storage.AsyncWriteCallback;
 import storage.StorageService;
 
 public class StorageServiceImpl implements StorageService {
-
-    Map<Key, ReadWriteLock> locked;
+    private Map<Key, ReadWriteLock> locked;
     private DiskTablesService diskTablesService;
-    private volatile boolean needSync;
+
+    ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     public StorageServiceImpl(DiskTablesService diskTablesService) {
         this.diskTablesService = diskTablesService;
@@ -30,57 +33,77 @@ public class StorageServiceImpl implements StorageService {
     }
 
     @Override
-    public void get(Key key, AsyncWriteCallback callback) throws IOException {
-        getLock(key).readLock().lock();
+    public CompletableFuture<Optional<Value>> get(Key key) throws IOException {
+        return getValue(key);
 
-        try {
-            Optional<Value> value = getValue(key);
-
-            if (value.isPresent()) {
-                callback.onValueBlockRead(value.get().size(), ByteBuffer.wrap(value.get().asBytes()));
-            }
-
-            callback.onValueBlockRead(-1, null);
-        } finally {
-            getLock(key).readLock().unlock();
-        }
+        /*return CompletableFuture.runAsync(() -> getLock(key).readLock().lock())
+                .thenCompose(k -> {
+                    try {
+                        return getValue(key);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    return CompletableFuture.completedFuture(Optional.empty());
+                })
+                .thenApply(v -> {
+                    getLock(key).readLock().unlock();
+                    return v;
+                })
+                ; */
     }
 
-    private Optional<Value> getValue(Key key) throws IOException {
+    private CompletableFuture<Optional<Value>> getValue(Key key) throws IOException {
 
         Optional<Value> value = diskTablesService.lookupInMemory(key);
 
         if (value.isPresent()) {
-            return value;
+            return CompletableFuture.completedFuture(value);
         }
 
-        value = diskTablesService.lookupOnDisk(key);
+        return diskTablesService
+                .lookupOnDisk(key)
+                .thenApply(v -> {
+                    if (v.isPresent()) {
+                        diskTablesService.set(key, v.get());
+                        return v;
+                    }
 
-        if (value.isPresent()) {
-            diskTablesService.set(key, value.get());
-            return value;
-        }
-
-        return Optional.empty();
+                    return Optional.empty();
+                });
     }
 
     @Override
-    public void set(Key key, Value value) throws IOException {
-        getLock(key).writeLock().lock();
+    public CompletableFuture<Void> set(Key key, Value value) throws IOException {
 
-        try {
-            Value oldValue = getValue(key).orElse(null);
+        return getValue(key).thenApply(v -> {
+                    if(v.isPresent() && v.get().getTimeStamp().compareTo(value.getTimeStamp()) < 0)
+                        diskTablesService.set(key, value);
 
-            if (oldValue == null || oldValue.getTimeStamp().compareTo(value.getTimeStamp()) < 0) {
-                diskTablesService.set(key, value);
-            }
+                    return null;
+                }
+        );
 
-            //System.err.println(Thread.currentThread()+" Create "+key+ " "+value);
 
-        } finally {
-            getLock(key).writeLock().unlock();
-        }
+       /* return CompletableFuture.runAsync(() -> getLock(key).writeLock().lock())
+                .thenCompose(k -> {
+                    try {
+                        return getValue(key);
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
 
+                    return CompletableFuture.completedFuture(Optional.empty());
+                })
+                .thenApply(
+                        v -> {
+                            if(v.isPresent() && v.get().getTimeStamp().compareTo(value.getTimeStamp()) < 0)
+                                    diskTablesService.set(key, value);
+
+                            return null;
+                        }
+
+                )
+                .thenApply(v -> { getLock(key).writeLock().unlock(); return null;}); */
     }
 
 }

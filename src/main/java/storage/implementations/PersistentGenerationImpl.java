@@ -6,6 +6,7 @@ import java.util.AbstractMap;
 import java.util.Iterator;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -29,6 +30,15 @@ public class PersistentGenerationImpl implements PersistentGeneration {
         this.fileReaderThread = fileReadingService;
     }
 
+    public PrimaryIndex.IndexEntry search(Key key) {
+        return index.search(key);
+    }
+
+    @Override
+    public CompletableFuture<Value> getAsync(PrimaryIndex.IndexEntry indexEntry) {
+        return CompletableFuture.supplyAsync(() -> readValueByIndex(indexEntry), fileReaderThread);
+    }
+
     @Override
     public Optional<Value> get(Key key) {
         return readWithWait(index.search(key));
@@ -36,7 +46,7 @@ public class PersistentGenerationImpl implements PersistentGeneration {
 
     private Optional<Value> readWithWait(PrimaryIndex.IndexEntry entry) {
         if (entry != null) {
-            Future<Value> value = fileReaderThread.submit(() -> readValueByIndex(entry));
+            Future<Value> value = getAsync(entry);
             try {
                 return Optional.of(value.get());
             } catch (InterruptedException | ExecutionException e) {

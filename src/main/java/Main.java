@@ -1,8 +1,7 @@
 import java.io.IOException;
-import java.util.HashSet;
 import java.util.Optional;
 import java.util.Scanner;
-import java.util.Set;
+import java.util.concurrent.ExecutionException;
 
 import row.KeyImpl;
 import row.TimestampImpl;
@@ -15,14 +14,15 @@ import storage.implementations.AsyncServerImpl;
 import storage.implementations.CommandParserImpl;
 import storage.implementations.DiskTablesServiceImpl;
 import storage.implementations.StorageServiceImpl;
-import storage.implementations.TcpServerImpl;
 import storage.implementations.VolatileGenerationImpl;
 
 public class Main {
 
     //static byte[] value = new byte[4096];
 
-    public static void test(StorageService storageService, int offset) throws IOException {
+    public static void test(StorageService storageService, int offset)
+            throws IOException, ExecutionException, InterruptedException
+    {
         while (true) {
             for (int j = 0; j < 4; j++) {
                 for (int i = 0; i < 10000; i++) {
@@ -37,7 +37,7 @@ public class Main {
                         e.printStackTrace();
                     }
 
-                    Optional<Value> rv = storageService.get(new KeyImpl(key));
+                    Optional<Value> rv = storageService.get(new KeyImpl(key)).get();
 
                     assert rv.isPresent() && rv.get().toString().equals(value);
                 }

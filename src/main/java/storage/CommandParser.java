@@ -1,7 +1,9 @@
 package storage;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.util.concurrent.CompletableFuture;
 
 public interface CommandParser {
-    byte[] processCommand(String command, AsyncWriteCallback callback) throws IOException;
+    CompletableFuture<ByteBuffer> processCommand(String command) throws IOException;
 }

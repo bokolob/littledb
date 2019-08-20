@@ -1,9 +1,9 @@
 package storage;
 
-import java.nio.ByteBuffer;
+import java.util.Optional;
+
+import row.Value;
 
 public interface ValueSearchCallback {
-    void onNotFound();
-    void onValueFound(PrimaryIndex.IndexEntry entry);
-    void onValueBlockRead(ByteBuffer buffer);
+    void onRead(Optional<Value> value);
 }
