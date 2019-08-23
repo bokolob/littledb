@@ -4,19 +4,15 @@ import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
-import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import storage.CommandParser;
-import storage.AsyncWriteCallback;
 
 public class AsyncServerImpl {
     int port;
@@ -53,10 +49,6 @@ public class AsyncServerImpl {
             this.commandParser = commandParser;
         }
 
-        public SocketChannel channel() {
-            return channel;
-        }
-
         public int defaultOps() {
             return SelectionKey.OP_READ;
         }
@@ -78,6 +70,7 @@ public class AsyncServerImpl {
                                     System.err.println("CommandParser callback! "+buf);
                                     writeBuffer = buf;
                                     selectionKey.interestOps(SelectionKey.OP_WRITE);
+                                    selectionKey.selector().wakeup();
                                 });
 
                         stringBuffer = new StringBuffer();
