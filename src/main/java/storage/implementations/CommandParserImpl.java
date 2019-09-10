@@ -3,55 +3,73 @@ package storage.implementations;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 
 import row.Key;
 import row.KeyImpl;
 import row.TimestampImpl;
+import row.Value;
 import row.ValueImpl;
 import storage.CommandParser;
+import storage.ReplicationService;
 import storage.StorageService;
 
 public class CommandParserImpl implements CommandParser {
-    StorageService storageService;
-    ExecutorService executorService;
+    private StorageService storageService;
+    private ReplicationService replicationService;
+    private String nodeName;
 
-    public CommandParserImpl(StorageService storageService) {
+    public CommandParserImpl(StorageService storageService, ReplicationService replicationService,
+            String nodeName)
+    {
         this.storageService = storageService;
-        executorService = Executors.newCachedThreadPool();
+        this.replicationService = replicationService;
+        this.nodeName = nodeName;
     }
 
     @Override
-    public CompletableFuture<ByteBuffer> processCommand(String command) throws IOException {
+    public CompletableFuture<byte[]> processCommand(String command) throws IOException {
         String[] kv = command.split(" ");
 
         if (kv.length < 2) {
             System.err.println("Bad command..");
 
-            return CompletableFuture.completedFuture(ByteBuffer.wrap("Bad command\n".getBytes()));
+            return CompletableFuture.completedFuture("Bad command\n".getBytes());
         }
 
+        switch (kv[0]) {
+            case "get":
+                System.err.println("KEY=" + kv[1] + " " + new String(new KeyImpl(kv[1].getBytes()).toBytes()));
 
-        if (kv[0].equals("get")) {
+                Key key = new KeyImpl(kv[1].getBytes());
 
-            System.err.println("KEY=" + kv[1] + " " + new String(new KeyImpl(kv[1].getBytes()).toBytes()));
+                return storageService
+                        .get(key)
+                        .thenApply(v ->
+                                v.map(Value::asBytes)
+                                        .orElseGet("Not found\n"::getBytes));
 
-            Key key = new KeyImpl(kv[1].getBytes());
-
-            return storageService.get(key)
-                    .thenApply(v ->
-                            v.map(k -> ByteBuffer.wrap(k.asBytes()))
-                                    .orElseGet(() -> ByteBuffer.wrap("Not found\n".getBytes()))
-                    );
-
-        } else if (kv[0].equals("set")) {
-            return storageService.set(
-                    new KeyImpl(kv[1].getBytes()),
-                    new ValueImpl(kv[2].getBytes(), new TimestampImpl()))
-                    .thenApply(v -> ByteBuffer.wrap("Ok\n".getBytes()));
-        } else {
-            return CompletableFuture.completedFuture(ByteBuffer.wrap("Unknown command\n".getBytes()));
+            case "set":
+                Key setKey = new KeyImpl(kv[1].getBytes());
+                Value setValue = new ValueImpl(kv[2].getBytes(), new TimestampImpl());
+                return storageService
+                        .set(setKey, setValue)
+                        .thenApply(v -> {
+                            replicationService.replicate(setKey, setValue);
+                            return v;
+                        })
+                        .thenApply(v -> "Ok\n".getBytes());
+            case "ping":
+                return CompletableFuture.completedFuture("pong\n".getBytes());
+            case "getName":
+                return CompletableFuture.completedFuture(nodeName.getBytes());
+            default:
+                return CompletableFuture.completedFuture("Unknown command\n".getBytes());
         }
+
     }
+
+    private ByteBuffer sb(String msg) {
+        return ByteBuffer.wrap(msg.getBytes());
+    }
+
 }

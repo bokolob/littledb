@@ -32,12 +32,8 @@ public class StorageServiceImpl implements StorageService {
         return diskTablesService
                 .lookupOnDisk(key)
                 .thenApply(v -> {
-                    if (v.isPresent()) {
-                        diskTablesService.set(key, v.get());
-                        return v;
-                    }
-
-                    return Optional.empty();
+                    v.ifPresent(val -> diskTablesService.set(key, val));
+                    return v;
                 });
     }
 
@@ -45,7 +41,7 @@ public class StorageServiceImpl implements StorageService {
     public CompletableFuture<Void> set(Key key, Value value) throws IOException {
 
         return getValue(key).thenApply(v -> {
-                    if(v.isPresent() && v.get().getTimeStamp().compareTo(value.getTimeStamp()) < 0)
+                    if(!v.isPresent() || v.get().getTimeStamp().compareTo(value.getTimeStamp()) < 0)
                         diskTablesService.set(key, value);
 
                     return null;

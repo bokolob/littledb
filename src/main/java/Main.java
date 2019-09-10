@@ -1,18 +1,23 @@
 import java.io.IOException;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Scanner;
 import java.util.concurrent.ExecutionException;
 
+import events.EventLoop;
+import events.implementations.EventLoopImpl;
 import row.KeyImpl;
 import row.TimestampImpl;
 import row.Value;
 import row.ValueImpl;
 import storage.CommandParser;
 import storage.DiskTablesService;
+import storage.ReplicationService;
 import storage.StorageService;
 import storage.implementations.AsyncServerImpl;
 import storage.implementations.CommandParserImpl;
 import storage.implementations.DiskTablesServiceImpl;
+import storage.implementations.ReplicationServiceImpl;
 import storage.implementations.StorageServiceImpl;
 import storage.implementations.VolatileGenerationImpl;
 
@@ -52,11 +57,17 @@ public class Main {
 
         System.out.println("Started");
 
-        CommandParser commandParser = new CommandParserImpl(storageService);
+        EventLoop eventLoop = new EventLoopImpl();
+        eventLoop.start();
 
-        //TcpServerImpl tcpServer = new TcpServerImpl(commandParser);
+        ReplicationService replicationService = new ReplicationServiceImpl(
+                Map.of("host1", new ReplicationServiceImpl.NodeDescription("localhost",5000),
+                        "host2", new ReplicationServiceImpl.NodeDescription("localhost", 5001)
+                        ), eventLoop);
 
-        AsyncServerImpl tcpServer = new AsyncServerImpl(4999,commandParser);
+        CommandParser commandParser = new CommandParserImpl(storageService, replicationService, "Node1");
+
+        AsyncServerImpl tcpServer = new AsyncServerImpl(4999,commandParser, eventLoop);
 
         tcpServer.run();
 

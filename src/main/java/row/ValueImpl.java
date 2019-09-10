@@ -1,5 +1,7 @@
 package row;
 
+import java.nio.ByteBuffer;
+
 public class ValueImpl implements Value {
     final byte[] bytes;
     final Timestamp timestamp;
@@ -26,6 +28,11 @@ public class ValueImpl implements Value {
     @Override
     public byte[] asBytes() {
         return bytes;
+    }
+
+    @Override
+    public ByteBuffer asByteBuffer() {
+        return ByteBuffer.wrap(bytes).asReadOnlyBuffer();
     }
 
     @Override
