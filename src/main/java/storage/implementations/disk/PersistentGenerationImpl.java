@@ -1,4 +1,4 @@
-package storage.implementations;
+package storage.implementations.disk;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
@@ -14,8 +14,6 @@ import java.util.concurrent.Future;
 import row.Key;
 import row.Value;
 import row.ValueImpl;
-import storage.PersistentGeneration;
-import storage.PrimaryIndex;
 
 public class PersistentGenerationImpl implements PersistentGeneration {
     private PrimaryIndex index;

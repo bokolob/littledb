@@ -1,4 +1,4 @@
-package storage;
+package storage.implementations.disk;
 
 import java.io.BufferedOutputStream;
 import java.io.IOException;

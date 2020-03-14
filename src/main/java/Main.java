@@ -1,40 +1,40 @@
 import java.io.IOException;
-import java.util.Map;
-import java.util.Optional;
 import java.util.Scanner;
-import java.util.concurrent.ExecutionException;
 
+import actors.ActorMessageRouter;
+import actors.implementations.ActorMessageRouterImpl;
 import events.EventLoop;
 import events.implementations.EventLoopImpl;
 import row.KeyImpl;
+import row.RowImpl;
 import row.TimestampImpl;
-import row.Value;
 import row.ValueImpl;
-import storage.CommandParser;
-import storage.DiskTablesService;
-import storage.ReplicationService;
-import storage.StorageService;
 import storage.implementations.AsyncServerImpl;
-import storage.implementations.CommandParserImpl;
-import storage.implementations.DiskTablesServiceImpl;
-import storage.implementations.ReplicationServiceImpl;
-import storage.implementations.StorageServiceImpl;
 import storage.implementations.VolatileGenerationImpl;
+import storage.implementations.commands.CommandParserImpl;
+import storage.implementations.disk.DiskTablesService;
+import storage.implementations.disk.DiskTablesServiceImpl;
+import storage.implementations.disk.messages.lookup.LookupRequest;
+import storage.implementations.disk.messages.set.SetKVRequest;
 
 public class Main {
 
     //static byte[] value = new byte[4096];
 
-    public static void test(StorageService storageService, int offset)
-            throws IOException, ExecutionException, InterruptedException
-    {
+    public static void test(ActorMessageRouter router, int offset) {
         while (true) {
             for (int j = 0; j < 4; j++) {
                 for (int i = 0; i < 10000; i++) {
                     String key = Thread.currentThread().getId() * i + "";
-                    String value = ""+ (i * j + offset);
+                    String value = "" + (i * j + offset);
 
-                    storageService.set(new KeyImpl(key), new ValueImpl(value, new TimestampImpl()));
+                    SetKVRequest setKVRequest = new SetKVRequest(null, new RowImpl(new KeyImpl(key),
+                            new ValueImpl(value, new TimestampImpl())),
+                            v -> {
+                            }
+                    );
+
+                    router.sendRequest(setKVRequest);
 
                     try {
                         Thread.sleep(10);
@@ -42,9 +42,11 @@ public class Main {
                         e.printStackTrace();
                     }
 
-                    Optional<Value> rv = storageService.get(new KeyImpl(key)).get();
+                    LookupRequest request = new LookupRequest(null, new KeyImpl(key), rv -> {
+                        assert rv.isPresent() && rv.get().toString().equals(value);
+                    });
 
-                    assert rv.isPresent() && rv.get().toString().equals(value);
+                    router.sendRequest(request);
                 }
             }
         }
@@ -52,24 +54,33 @@ public class Main {
 
     public static void main(String[] argv) throws IOException {
         Scanner input = new Scanner(System.in);
-        DiskTablesService diskTablesService = new DiskTablesServiceImpl(VolatileGenerationImpl::new);
-        StorageService storageService = new StorageServiceImpl(diskTablesService);
+        ActorMessageRouter router = ActorMessageRouterImpl.INSTANCE;
 
-        System.out.println("Started");
+        CommandParserImpl commandParser = new CommandParserImpl(1, null, "node-1", router);
+        DiskTablesService diskTablesService = new DiskTablesServiceImpl(10, VolatileGenerationImpl::new, router);
+
+        commandParser.run();
+        diskTablesService.run();
+
+        // test(router, 0);
 
         EventLoop eventLoop = new EventLoopImpl();
         eventLoop.start();
 
+        /*
         ReplicationService replicationService = new ReplicationServiceImpl(
-                Map.of("host1", new ReplicationServiceImpl.NodeDescription("localhost",5000),
-                        "host2", new ReplicationServiceImpl.NodeDescription("localhost", 5001)
+                Map.of("host1", new ReplicationServiceImpl.NodeDescription("localhost",5000, aliveReplicas,
+                                replicatedElements),
+                        "host2", new ReplicationServiceImpl.NodeDescription("localhost", 5001, aliveReplicas,
+                                replicatedElements)
                         ), eventLoop);
+*/
 
-        CommandParser commandParser = new CommandParserImpl(storageService, replicationService, "Node1");
-
-        AsyncServerImpl tcpServer = new AsyncServerImpl(4999,commandParser, eventLoop);
+        AsyncServerImpl tcpServer = new AsyncServerImpl(1, 9090, eventLoop, router);
 
         tcpServer.run();
+
+        System.out.println("Started");
 
         /*Set<Thread> threads = new HashSet<>();
 

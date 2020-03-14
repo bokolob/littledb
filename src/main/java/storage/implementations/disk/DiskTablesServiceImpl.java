@@ -1,4 +1,4 @@
-package storage.implementations;
+package storage.implementations.disk;
 
 import java.io.EOFException;
 import java.io.File;
@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
@@ -23,20 +22,18 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
+import actors.ActorMessageRouter;
+import actors.implementations.BaseActorImpl;
 import row.Key;
 import row.Value;
-import storage.DataStreamOutput;
-import storage.DiskTablesService;
-import storage.GenerationInterface;
-import storage.IndexStreamInput;
-import storage.IndexStreamOutput;
-import storage.PersistentGeneration;
-import storage.PrimaryIndex;
-import storage.VolatileGeneration;
+import storage.implementations.disk.messages.lookup.LookupRequest;
+import storage.implementations.disk.messages.lookup.LookupResponse;
+import storage.implementations.disk.messages.set.SetKVRequest;
+import storage.implementations.disk.messages.set.SetKVResponse;
 
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
-public class DiskTablesServiceImpl implements DiskTablesService {
+public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesService {
     private static final String DATA_PATH = "/Users/oxid/development/.littledb";
     private static final long MAX_IN_MEMORY_DB_SIZE = 1000L;
     private static final String INDEX_FILE_EXT = ".idx";
@@ -51,6 +48,7 @@ public class DiskTablesServiceImpl implements DiskTablesService {
     private Supplier<VolatileGeneration> volatileGenerationSupplier;
     private ExecutorService syncExecutorService;
     private ExecutorService fileReadingService;
+    private final ActorMessageRouter router;
 
     private class DaemonFactory implements ThreadFactory {
 
@@ -62,7 +60,14 @@ public class DiskTablesServiceImpl implements DiskTablesService {
         }
     }
 
-    public DiskTablesServiceImpl(Supplier<VolatileGeneration> volatileGenerationSupplier) {
+    public DiskTablesServiceImpl(int threadCount,
+                                 Supplier<VolatileGeneration> volatileGenerationSupplier, ActorMessageRouter router) {
+        super(threadCount, router);
+        this.router = router;
+
+        this.registerMessageHandler(LookupRequest.class, this::lookup);
+        this.registerMessageHandler(SetKVRequest.class, this::set);
+
         if (!folder.exists()) {
             folder.mkdir();
         }
@@ -144,7 +149,8 @@ public class DiskTablesServiceImpl implements DiskTablesService {
             PrimaryIndex index = PrimaryIndexImpl
                     .fromInputStream(new IndexStreamInput(new FileInputStream(indexPath)));
 
-            PersistentGeneration generation = new PersistentGenerationImpl(index, getDataPath(indexPath), fileReadingService);
+            PersistentGeneration generation = new PersistentGenerationImpl(index, getDataPath(indexPath),
+                    fileReadingService);
 
             System.out.println("Add: " + indexPath);
             fileCache.add(indexPath, generation, 15000L + System.currentTimeMillis());
@@ -166,8 +172,7 @@ public class DiskTablesServiceImpl implements DiskTablesService {
 
         try (IndexStreamOutput indexWriter = new IndexStreamOutput(new FileOutputStream(indexPath + ".tmp"));
              DataStreamOutput dataWriter = new DataStreamOutput(new FileOutputStream(dataPath + ".tmp"))
-        )
-        {
+        ) {
             while (iterator.hasNext()) {
                 Map.Entry<Key, Value> entry = iterator.next();
                 PrimaryIndex.IndexEntry indexEntry = indexWriter.writeRecord(entry.getKey(), entry.getValue());
@@ -187,14 +192,26 @@ public class DiskTablesServiceImpl implements DiskTablesService {
         return persistentGeneration;
     }
 
-    @Override
-    public Optional<Value> lookupInMemory(Key key) {
+    void lookup(LookupRequest request) {
+
+        Optional<Value> value = lookupInMemory(request);
+
+        if (value.isPresent()) {
+            router.sendResponse(new LookupResponse(value.get(), request));
+            return;
+        }
+
+        lookupOnDisk(request);
+    }
+
+    Optional<Value> lookupInMemory(LookupRequest request) {
         VolatileGeneration storage = volatileGenerationHolder.getVolatileGeneration();
+
         try {
-            Optional<Value> found = storage.get(key);
+            Optional<Value> found = storage.get(request.getRequestObject());
 
             if (found.isEmpty() && lastSyncedGeneration != null) {
-                found = lastSyncedGeneration.get(key);
+                found = lastSyncedGeneration.get(request.getRequestObject());
             }
 
             return found;
@@ -203,8 +220,12 @@ public class DiskTablesServiceImpl implements DiskTablesService {
         }
     }
 
-    @Override
-    public void set(Key key, Value value) {
+    void set(SetKVRequest request) {
+        set(request.getRequestObject().getKey(), request.getRequestObject().getValue());
+        router.sendResponse(new SetKVResponse(request));
+    }
+
+    void set(Key key, Value value) {
         VolatileGeneration storage = volatileGenerationHolder.getVolatileGeneration();
 
         try {
@@ -273,26 +294,29 @@ public class DiskTablesServiceImpl implements DiskTablesService {
         return null;
     }
 
-    @Override
-    public CompletableFuture<Optional<Value>> lookupOnDisk(Key key) {
 
-        return CompletableFuture.supplyAsync(() -> findFileWithValue(key))
-                .thenCompose(pair -> {
-                    if (pair == null) {
-                        return CompletableFuture.completedFuture(null);
-                    }
-                    else {
-                        return pair.getValue().getAsync(pair.getKey());
-                    }
-                }).thenApply(Optional::ofNullable);
+    void lookupOnDisk(LookupRequest diskLookupRequest) {
+        Map.Entry<PrimaryIndex.IndexEntry, PersistentGeneration> pair =
+                findFileWithValue(diskLookupRequest.getRequestObject());
+
+        if (pair == null) {
+            router.sendResponse(new LookupResponse(null, diskLookupRequest));
+        } else {
+            pair.getValue().getAsync(pair.getKey())
+                    .thenAccept(
+                            value -> {
+                                set(pair.getKey().getKey(), value);
+                                router.sendResponse(new LookupResponse(value, diskLookupRequest));
+                            }
+                    );
+        }
 
     }
 
     private static class VolatileGenerationHolder {
         private AtomicStampedReference<VolatileGeneration> volatileGenerationRef;
 
-        public VolatileGenerationHolder(VolatileGeneration firstGeneration)
-        {
+        public VolatileGenerationHolder(VolatileGeneration firstGeneration) {
             this.volatileGenerationRef = new AtomicStampedReference<>(firstGeneration, 0);
         }
 

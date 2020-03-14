@@ -6,10 +6,8 @@ import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
@@ -18,6 +16,8 @@ import events.MessageReader;
 import events.Peer;
 
 public class PeerImpl implements Peer {
+    private static long id = 0; // might be AtomicLong
+
     private final ByteBuffer readBuffer;
     private final BlockingQueue<ByteBuffer[]> messagesForSend;
     //private final Map<Long, Consumer<Message>> onResponse;
@@ -28,6 +28,7 @@ public class PeerImpl implements Peer {
     private Consumer<Message> onNewMessage;
     private Consumer<Peer> onWritable;
     private SelectionKey selectionKey;
+    private final long peerId;
 
     @Override
     public void setOnAccept(Function<SocketChannel, Peer> onAccept) {
@@ -62,11 +63,13 @@ public class PeerImpl implements Peer {
     public PeerImpl(MessageReader messageReader) {
         this.messageReader = messageReader;
         this.readBuffer = ByteBuffer.allocate(128);
-       // onResponse = new ConcurrentHashMap<>();
+        this.peerId = id++;
+        // onResponse = new ConcurrentHashMap<>();
         messagesForSend = new ArrayBlockingQueue<>(128);
     }
 
     public PeerImpl() {
+        this.peerId = id++;
         this.messageReader = null;
         this.readBuffer = null;
         //onResponse = new ConcurrentHashMap<>();
@@ -92,6 +95,11 @@ public class PeerImpl implements Peer {
     @Override
     public void close() {
 
+    }
+
+    @Override
+    public long getPeerId() {
+        return peerId;
     }
 
     @Override

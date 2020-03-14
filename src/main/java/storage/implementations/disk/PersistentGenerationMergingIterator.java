@@ -1,4 +1,4 @@
-package storage.implementations;
+package storage.implementations.disk;
 
 import java.util.Iterator;
 import java.util.Map;

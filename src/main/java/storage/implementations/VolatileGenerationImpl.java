@@ -6,13 +6,10 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicStampedReference;
-
-import javax.lang.model.util.AbstractAnnotationValueVisitor6;
 
 import row.Key;
 import row.Value;
-import storage.VolatileGeneration;
+import storage.implementations.disk.VolatileGeneration;
 
 public class VolatileGenerationImpl implements VolatileGeneration {
     private ConcurrentSkipListMap<Key, AtomicReference<Value>> storage;

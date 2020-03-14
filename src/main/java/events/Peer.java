@@ -1,18 +1,18 @@
 package events;
 
 import java.nio.ByteBuffer;
-import java.nio.channels.ByteChannel;
 import java.nio.channels.ClosedChannelException;
 import java.nio.channels.SelectableChannel;
 import java.nio.channels.SelectionKey;
 import java.nio.channels.Selector;
 import java.nio.channels.SocketChannel;
-import java.util.Map;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
 import java.util.function.Function;
 
 public interface Peer {
+    long getPeerId();
+
     BlockingQueue<ByteBuffer[]> getMessagesForSend();
 
     MessageReader getMessageReader();

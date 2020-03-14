@@ -1,4 +1,4 @@
-package storage.implementations;
+package storage.implementations.disk;
 
 import java.util.Map;
 import java.util.TimerTask;

@@ -1,4 +1,4 @@
-package storage;
+package storage.implementations.disk;
 
 import row.Key;
 import row.Timestamp;

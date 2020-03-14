@@ -1,7 +1,6 @@
-package storage;
+package storage.implementations.disk;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
 import row.Key;
 import row.Value;
