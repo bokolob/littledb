@@ -16,6 +16,9 @@ import storage.implementations.disk.DiskTablesService;
 import storage.implementations.disk.DiskTablesServiceImpl;
 import storage.implementations.disk.messages.lookup.LookupRequest;
 import storage.implementations.disk.messages.set.SetKVRequest;
+import storage.implementations.tables.TablesListServiceImpl;
+import storage.implementations.tables.data.ValueParser;
+import storage.implementations.tables.data.ValueSerializer;
 
 public class Main {
 
@@ -28,7 +31,9 @@ public class Main {
                     String key = Thread.currentThread().getId() * i + "";
                     String value = "" + (i * j + offset);
 
-                    SetKVRequest setKVRequest = new SetKVRequest(null, new RowImpl(new KeyImpl(key),
+                    SetKVRequest setKVRequest =
+                            new SetKVRequest(null,
+                                    new RowImpl(new KeyImpl(key),
                             new ValueImpl(value, new TimestampImpl())),
                             v -> {
                             }
@@ -54,13 +59,25 @@ public class Main {
 
     public static void main(String[] argv) throws IOException {
         Scanner input = new Scanner(System.in);
+
         ActorMessageRouter router = ActorMessageRouterImpl.INSTANCE;
 
-        CommandParserImpl commandParser = new CommandParserImpl(1, null, "node-1", router);
-        DiskTablesService diskTablesService = new DiskTablesServiceImpl(10, VolatileGenerationImpl::new, router);
+        TablesListServiceImpl tablesListService = new TablesListServiceImpl(
+                10,router,"/Users/oxid/development/.littledb/tables/",
+                new ValueSerializer(), new ValueParser());
 
+        tablesListService.run();
+
+        CommandParserImpl commandParser = new CommandParserImpl(1, null, "node-1", router);
         commandParser.run();
-        diskTablesService.run();
+
+        /*
+        for (var table : tablesListService.listTables()) {
+            DiskTablesService diskTablesService = new DiskTablesServiceImpl(10, table.getPath(),
+                    VolatileGenerationImpl::new, router);
+
+            diskTablesService.run();
+        }*/
 
         // test(router, 0);
 

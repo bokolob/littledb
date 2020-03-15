@@ -104,6 +104,7 @@ public class EventLoopImpl implements EventLoop {
                         //TODO
                         selectionKey.channel().close();
                         selectionKey.cancel();
+                        //NPE
                         peerData.getOnFailure().accept(peerData);
                         peerData.close();
                         continue;

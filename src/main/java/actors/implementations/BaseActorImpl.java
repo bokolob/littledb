@@ -39,6 +39,7 @@ public abstract class BaseActorImpl implements Actor {
     }
 
     protected <T extends ActorMessage<?, ?>> void processMessage(T message) {
+        System.err.println(this+": processing "+ message);
         try {
             if (message instanceof ActorResponse) {
                 ((ActorResponse) message).getSourceRequest().getResponseHandler().accept(((ActorResponse) message).getResponseObject());

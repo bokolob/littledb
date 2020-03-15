@@ -34,11 +34,11 @@ import storage.implementations.disk.messages.set.SetKVResponse;
 import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 
 public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesService {
-    private static final String DATA_PATH = "/Users/oxid/development/.littledb";
+    private final String dataPath;
     private static final long MAX_IN_MEMORY_DB_SIZE = 1000L;
     private static final String INDEX_FILE_EXT = ".idx";
     private static final String DATA_FILE_EXT = ".dat";
-    private final File folder = new File(DATA_PATH);
+    private final File folder;
     volatile boolean in = false;
 
     private VolatileGenerationHolder volatileGenerationHolder;
@@ -61,12 +61,17 @@ public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesSe
     }
 
     public DiskTablesServiceImpl(int threadCount,
-                                 Supplier<VolatileGeneration> volatileGenerationSupplier, ActorMessageRouter router) {
+                                 String dataRoot,
+                                 Supplier<VolatileGeneration> volatileGenerationSupplier,
+                                 ActorMessageRouter router) {
         super(threadCount, router);
         this.router = router;
 
         this.registerMessageHandler(LookupRequest.class, this::lookup);
         this.registerMessageHandler(SetKVRequest.class, this::set);
+
+        dataPath = dataRoot;
+        folder = new File(dataPath);
 
         if (!folder.exists()) {
             folder.mkdir();
@@ -163,7 +168,7 @@ public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesSe
     }
 
     private PersistentGeneration saveToDisk(Iterator<Map.Entry<Key, Value>> iterator) throws Exception {
-        String path = DATA_PATH + "/" + System.currentTimeMillis();
+        String path = dataPath + "/" + System.currentTimeMillis();
 
         String indexPath = path + INDEX_FILE_EXT;
         String dataPath = path + DATA_FILE_EXT;
@@ -197,7 +202,7 @@ public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesSe
         Optional<Value> value = lookupInMemory(request);
 
         if (value.isPresent()) {
-            router.sendResponse(new LookupResponse(value.get(), request));
+            router.sendResponse(new LookupResponse(request, value.get()));
             return;
         }
 
@@ -222,7 +227,7 @@ public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesSe
 
     void set(SetKVRequest request) {
         set(request.getRequestObject().getKey(), request.getRequestObject().getValue());
-        router.sendResponse(new SetKVResponse(request));
+        router.sendResponse(new SetKVResponse(request, null));
     }
 
     void set(Key key, Value value) {
@@ -300,13 +305,13 @@ public class DiskTablesServiceImpl extends BaseActorImpl implements DiskTablesSe
                 findFileWithValue(diskLookupRequest.getRequestObject());
 
         if (pair == null) {
-            router.sendResponse(new LookupResponse(null, diskLookupRequest));
+            router.sendResponse(new LookupResponse(diskLookupRequest, null));
         } else {
             pair.getValue().getAsync(pair.getKey())
                     .thenAccept(
                             value -> {
                                 set(pair.getKey().getKey(), value);
-                                router.sendResponse(new LookupResponse(value, diskLookupRequest));
+                                router.sendResponse(new LookupResponse(diskLookupRequest, value));
                             }
                     );
         }
