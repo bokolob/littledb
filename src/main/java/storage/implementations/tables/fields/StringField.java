@@ -1,5 +1,6 @@
 package storage.implementations.tables.fields;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import storage.implementations.tables.data.Field;
 
 public class StringField implements Field {
@@ -25,6 +26,7 @@ public class StringField implements Field {
     }
 
     @Override
+    @JsonProperty("value")
     public String asString() {
         return value;
     }

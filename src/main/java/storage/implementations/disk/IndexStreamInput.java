@@ -13,7 +13,7 @@ import row.TimestampImpl;
 import static row.Key.KEY_SIZE;
 
 public class IndexStreamInput implements AutoCloseable {
-    DataInputStream inputStream;
+    private final DataInputStream inputStream;
 
     public IndexStreamInput(InputStream out) {
         this.inputStream = new DataInputStream(new BufferedInputStream(out));

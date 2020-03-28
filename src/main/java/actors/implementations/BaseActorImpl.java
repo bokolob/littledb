@@ -29,7 +29,14 @@ public abstract class BaseActorImpl implements Actor {
 
     @Override
     public void pushMessage(ActorMessage<?, ?> message) {
-        incoming.add(message);
+        while (true) {
+            try {
+                incoming.put(message);
+                return;
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     public <T extends ActorRequest<?, ?>> void registerMessageHandler(Class<T> messageClass,
@@ -39,7 +46,7 @@ public abstract class BaseActorImpl implements Actor {
     }
 
     protected <T extends ActorMessage<?, ?>> void processMessage(T message) {
-        System.err.println(this+": processing "+ message);
+        //System.err.println(this + ": processing " + message);
         try {
             if (message instanceof ActorResponse) {
                 ((ActorResponse) message).getSourceRequest().getResponseHandler().accept(((ActorResponse) message).getResponseObject());

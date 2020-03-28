@@ -7,7 +7,7 @@ import java.io.OutputStream;
 import row.Value;
 
 public class DataStreamOutput implements AutoCloseable {
-    OutputStream outputStream;
+    private final OutputStream outputStream;
 
     public DataStreamOutput(OutputStream out) {
         this.outputStream = new BufferedOutputStream(out);

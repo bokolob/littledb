@@ -9,7 +9,7 @@ import row.Key;
 import row.Value;
 
 public class IndexStreamOutput implements AutoCloseable {
-    private DataOutputStream outputStream;
+    private final DataOutputStream outputStream;
     private int offset = 0;
 
     public IndexStreamOutput(OutputStream out) {
