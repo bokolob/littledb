@@ -58,7 +58,7 @@ public class EventLoopImpl implements EventLoop {
 
             if (System.currentTimeMillis() - lastIterationTime >= TIME_SLICE) {
                 lastIterationTime = System.currentTimeMillis();
-                runTimeoutHandlers(System.currentTimeMillis() );
+                runTimeoutHandlers(System.currentTimeMillis());
             }
 
             Set<SelectionKey> selectedKeys = selector.selectedKeys();
@@ -104,8 +104,10 @@ public class EventLoopImpl implements EventLoop {
                         //TODO
                         selectionKey.channel().close();
                         selectionKey.cancel();
-                        //NPE
-                        peerData.getOnFailure().accept(peerData);
+
+                        if (peerData.getOnFailure() != null) {
+                            peerData.getOnFailure().accept(peerData);
+                        }
                         peerData.close();
                         continue;
                     }
@@ -154,7 +156,7 @@ public class EventLoopImpl implements EventLoop {
         }
 
         private void runTimeoutHandlers(long currentTime) {
-            for (Consumer<Long> consumer: timeoutHandlers) {
+            for (Consumer<Long> consumer : timeoutHandlers) {
                 consumer.accept(currentTime);
             }
         }

@@ -62,18 +62,20 @@ public class FileService extends BaseActorImpl {
     public void run() {
         try {
             init();
-        } catch (FileNotFoundException e) {
+        } catch (Exception e) {
             e.printStackTrace();
             throw new RuntimeException(e);
         }
         super.run();
     }
 
-    public void init() throws FileNotFoundException {
+    public void init() throws Exception {
         File folder = new File(root);
         for (var file : Objects.requireNonNull(folder.listFiles((d, f) -> f.endsWith(FileEntry.INDEX_FILE_EXT)))) {
             fileEntries.add(new FileEntry(file));
         }
+
+        mergePersistentTables();
     }
 
     public void search(FileLookupRequest key) {
